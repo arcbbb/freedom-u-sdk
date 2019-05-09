@@ -22,6 +22,7 @@ buildroot_initramfs_sysroot_stamp := $(wrkdir)/.buildroot_initramfs_sysroot
 buildroot_initramfs_sysroot := $(wrkdir)/buildroot_initramfs_sysroot
 buildroot_rootfs_wrkdir := $(wrkdir)/buildroot_rootfs
 buildroot_rootfs_ext := $(buildroot_rootfs_wrkdir)/images/rootfs.ext4
+buildroot_rootfs_tar := $(buildroot_rootfs_wrkdir)/images/rootfs.tar
 buildroot_rootfs_config := $(confdir)/buildroot_rootfs_config
 
 linux_srcdir := $(srcdir)/linux
@@ -113,6 +114,8 @@ $(buildroot_rootfs_wrkdir)/.config: $(buildroot_srcdir) $(buildroot_initramfs_ta
 
 $(buildroot_rootfs_ext): $(buildroot_srcdir) $(buildroot_rootfs_wrkdir)/.config $(target_gcc) $(buildroot_rootfs_config)
 	$(MAKE) -C $< RISCV=$(RISCV) PATH=$(RVPATH) O=$(buildroot_rootfs_wrkdir)
+
+$(buildroot_rootfs_tar): $(buildroot_rootfs_ext)
 
 .PHONY: buildroot_rootfs-menuconfig
 buildroot_rootfs-menuconfig: $(buildroot_rootfs_wrkdir)/.config $(buildroot_srcdir)
@@ -375,4 +378,13 @@ format-demo-image: format-boot-loader
 		sudo tar -Jxvf $(DEMO_IMAGE)
 	sudo umount tmp-mnt
 
+format-lts-image: format-boot-loader $(buildroot_rootfs_tar)
+	@echo "Done setting up basic initramfs boot. We will now try to install"
+	@echo "a LTS image to the Linux partition, which requires sudo"
+	@echo "you can safely cancel here"
+	/sbin/mke2fs -t ext4 $(PART2)
+	-mkdir tmp-mnt
+	-sudo mount $(PART2) tmp-mnt && cd tmp-mnt && \
+		sudo tar -xvf $(buildroot_rootfs_tar)
+	sudo umount tmp-mnt
 -include $(initramfs).d
