@@ -89,7 +89,6 @@ all: $(fit) $(flash_image)
 #endif
 
 $(buildroot_initramfs_wrkdir)/.config: $(buildroot_srcdir)
-	rm -rf $(dir $@)
 	mkdir -p $(dir $@)
 	cp $(buildroot_initramfs_config) $@
 	$(MAKE) -C $< RISCV=$(RISCV) O=$(buildroot_initramfs_wrkdir) olddefconfig 
@@ -106,8 +105,7 @@ buildroot_initramfs-menuconfig: $(buildroot_initramfs_wrkdir)/.config $(buildroo
 
 # use buildroot_initramfs toolchain
 # TODO: fix path and conf/buildroot_rootfs_config
-$(buildroot_rootfs_wrkdir)/.config: $(buildroot_srcdir) $(buildroot_initramfs_tar)
-	rm -rf $(dir $@)
+$(buildroot_rootfs_wrkdir)/.config: $(buildroot_srcdir) $(buildroot_initramfs_tar) $(buildroot_rootfs_config)
 	mkdir -p $(dir $@)
 	cp $(buildroot_rootfs_config) $@
 	$(MAKE) -C $< RISCV=$(RISCV) PATH=$(RVPATH) O=$(buildroot_rootfs_wrkdir) olddefconfig
@@ -318,7 +316,9 @@ $(flash_image): $(uboot) $(fit) $(vfat_image)
 	dd conv=notrunc if=$(vfat_image) of=$(flash_image) bs=512 seek=$(VFAT_START)
 	dd conv=notrunc if=$(uboot) of=$(flash_image) bs=512 seek=$(UBOOT_START) count=$(UBOOT_SIZE)
 
-DEMO_END=11718750
+ROOT_CLUSTER_NUM=$(shell echo $$((20*1024*1024*1024/512)))
+DEMO_BEGIN=264192
+DEMO_END=$(shell echo $$(($(DEMO_BEGIN)+$(ROOT_CLUSTER_NUM))))
 
 #$(demo_image): $(uboot) $(fit) $(vfat_image) $(ext_image)
 #	dd if=/dev/zero of=$(flash_image) bs=512 count=$(DEMO_END)
@@ -336,7 +336,7 @@ format-boot-loader: $(bbl_bin) $(uboot) $(fit) $(vfat_image)
 	@test -b $(DISK) || (echo "$(DISK): is not a block device"; exit 1)
 	/sbin/sgdisk --clear  \
 		--new=1:$(VFAT_START):$(VFAT_END)  --change-name=1:"Vfat Boot"	--typecode=1:$(VFAT)   \
-		--new=2:264192:$(DEMO_END) --change-name=2:root	--typecode=2:$(LINUX) \
+		--new=2:$(DEMO_BEGIN):$(DEMO_END) --change-name=2:root	--typecode=2:$(LINUX) \
 		--new=3:$(UBOOT_START):$(UBOOT_END)   --change-name=3:uboot	--typecode=3:$(UBOOT) \
 		--new=4:$(UENV_START):$(UENV_END)  --change-name=4:uboot-env	--typecode=4:$(UBOOTENV) \
 		$(DISK)
@@ -378,13 +378,17 @@ format-demo-image: format-boot-loader
 		sudo tar -Jxvf $(DEMO_IMAGE)
 	sudo umount tmp-mnt
 
+DEB_IMAGE := debian_nvdla_20190506.tar.xz
+DEB_URL := https://github.com/sifive/freedom-u-sdk/releases/download/nvdla-demo-0.1
+
 format-lts-image: format-boot-loader $(buildroot_rootfs_tar)
 	@echo "Done setting up basic initramfs boot. We will now try to install"
 	@echo "a LTS image to the Linux partition, which requires sudo"
 	@echo "you can safely cancel here"
+	@test -e $(wrkdir)/$(DEB_IMAGE) || (wget -P $(wrkdir) $(DEB_URL)/$(DEB_IMAGE))
 	/sbin/mke2fs -t ext4 $(PART2)
 	-mkdir tmp-mnt
-	-sudo mount $(PART2) tmp-mnt && cd tmp-mnt && \
-		sudo tar -xvf $(buildroot_rootfs_tar)
-	sudo umount tmp-mnt
+	-mount $(PART2) tmp-mnt && \
+		tar xvf $(buildroot_rootfs_tar) -C tmp-mnt --checkpoint=1000
+	umount tmp-mnt
 -include $(initramfs).d
