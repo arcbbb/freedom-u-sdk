@@ -268,7 +268,8 @@ qemu: $(qemu) $(bbl) $(vmlinux) $(initramfs)
 
 .PHONY: qemu-rootfs
 qemu-rootfs: $(qemu) $(bbl) $(vmlinux) $(initramfs) $(rootfs)
-	$(qemu) -nographic -machine virt -bios $(bbl) -kernel $(vmlinux) -append 'root=/dev/vda' \
+	$(qemu) -m $(shell echo $$((8*1024))) \
+		-nographic -machine virt -bios $(bbl) -kernel $(vmlinux) -append 'root=/dev/vda' \
 		-drive file=$(rootfs),format=raw,id=hd0 -device virtio-blk-device,drive=hd0 \
 		-netdev user,id=net0 -device virtio-net-device,netdev=net0
 
